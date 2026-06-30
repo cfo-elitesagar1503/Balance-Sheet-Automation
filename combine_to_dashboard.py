@@ -206,8 +206,12 @@ def apply_bank_formatting(output_path):
     wb.save(output_path)
 
 def inject_vba_macro(xlsx_path):
-    import win32com.client
+    import sys
+    if sys.platform != "win32":
+        print("Skipping VBA Macro injection as we are not on a Windows machine.")
+        return
     try:
+        import win32com.client
         xl = win32com.client.Dispatch("Excel.Application")
         xl.Visible = False
         xl.DisplayAlerts = False
