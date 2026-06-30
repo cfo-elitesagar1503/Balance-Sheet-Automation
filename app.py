@@ -105,12 +105,41 @@ with tab2:
 
 with tab3:
     st.header("Upload Bank Statements")
+    st.markdown("### Pre-processed Data (Optional)")
+    st.markdown("If you already processed Sales and Purchases in a previous session, upload their Excel files here to save AI credits. Otherwise, it will use the data from Tab 1 & 2.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        processed_sales_file = st.file_uploader("Upload Processed Sales", type=["xlsx"], key="psales")
+    with col2:
+        processed_purch_file = st.file_uploader("Upload Processed Purchases", type=["xlsx"], key="ppurch")
+
+    st.markdown("### Bank Statement")
     bank_file = st.file_uploader("Upload Bank Statement (Excel/CSV)", type=["csv", "xlsx", "xls"], key="bank")
     
     if st.button("Run Bank Reconciliation Engine"):
         if bank_file is not None:
-            if 'sales_out' not in st.session_state or 'purch_out' not in st.session_state:
-                st.warning("Please process Sales and Purchases first!")
+            sales_path = None
+            purch_path = None
+            
+            if processed_sales_file:
+                sales_path = "temp_workspace/uploaded_sales_out.xlsx"
+                with open(sales_path, "wb") as f:
+                    f.write(processed_sales_file.getvalue())
+                st.session_state['sales_out'] = sales_path
+            elif 'sales_out' in st.session_state:
+                sales_path = st.session_state['sales_out']
+                
+            if processed_purch_file:
+                purch_path = "temp_workspace/uploaded_purch_out.xlsx"
+                with open(purch_path, "wb") as f:
+                    f.write(processed_purch_file.getvalue())
+                st.session_state['purch_out'] = purch_path
+            elif 'purch_out' in st.session_state:
+                purch_path = st.session_state['purch_out']
+                
+            if not sales_path or not purch_path:
+                st.warning("Please either upload the Processed Sales/Purchases files above OR process them in Tab 1 & 2 first!")
             else:
                 st.info("Reconciling Sales, Purchases, and processing unknown narrations with AI...")
                 from bank_processor import process_bank_statement
@@ -120,7 +149,7 @@ with tab3:
                     f.write(bank_file.getvalue())
                 
                 try:
-                    bank_df = process_bank_statement(bank_path, st.session_state['sales_out'], st.session_state['purch_out'])
+                    bank_df = process_bank_statement(bank_path, sales_path, purch_path)
                     bank_out = "temp_workspace/bank_output.xlsx"
                     bank_df.to_excel(bank_out, sheet_name="Bank", index=False)
                     st.session_state['bank_out'] = bank_out
