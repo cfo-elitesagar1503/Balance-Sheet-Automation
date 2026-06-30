@@ -19,17 +19,22 @@ with tab1:
     form26as_file = st.file_uploader("Upload Form 26AS (PDF)", type=["pdf"], key="26as")
     
     if st.button("Process Sales Data"):
-        if gstr1_file is not None and form26as_file is not None:
-            st.info("Processing Sales and matching TDS...")
+        if gstr1_file is not None:
+            st.info("Processing Sales data...")
             from sales_processor import process_sales_data
             
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_gstr1, \
-                 tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_26as:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_gstr1:
                 tmp_gstr1.write(gstr1_file.read())
-                tmp_26as.write(form26as_file.read())
+                
+                # Handle optional 26AS file
+                tmp_26as_path = None
+                if form26as_file is not None:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_26as:
+                        tmp_26as.write(form26as_file.read())
+                        tmp_26as_path = tmp_26as.name
                 
                 try:
-                    df_final, df_ledgers = process_sales_data(tmp_gstr1.name, None, tmp_26as.name)
+                    df_final, df_ledgers = process_sales_data(tmp_gstr1.name, None, tmp_26as_path)
                     sales_out = "temp_workspace/sales_output.xlsx"
                     with pd.ExcelWriter(sales_out) as writer:
                         df_final.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
@@ -39,7 +44,7 @@ with tab1:
                 except Exception as e:
                     st.error(f"Error processing sales: {e}")
         else:
-            st.warning("Please upload both GSTR1 and Form 26AS files.")
+            st.warning("Please upload at least the GSTR1 file.")
 
 with tab2:
     st.header("Upload Purchase Data")
