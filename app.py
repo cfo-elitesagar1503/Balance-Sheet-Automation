@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import tempfile
 
 st.set_page_config(page_title="Tally Automation Dashboard", page_icon="📊", layout="wide")
 
@@ -23,26 +22,26 @@ with tab1:
             st.info("Processing Sales data...")
             from sales_processor import process_sales_data
             
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_gstr1:
-                tmp_gstr1.write(gstr1_file.read())
+            gstr1_path = "temp_workspace/gstr1.xlsx"
+            with open(gstr1_path, "wb") as f:
+                f.write(gstr1_file.getvalue())
                 
-                # Handle optional 26AS file
-                tmp_26as_path = None
-                if form26as_file is not None:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_26as:
-                        tmp_26as.write(form26as_file.read())
-                        tmp_26as_path = tmp_26as.name
-                
-                try:
-                    df_final, df_ledgers = process_sales_data(tmp_gstr1.name, None, tmp_26as_path)
-                    sales_out = "temp_workspace/sales_output.xlsx"
-                    with pd.ExcelWriter(sales_out) as writer:
-                        df_final.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
-                        df_ledgers.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
-                    st.session_state['sales_out'] = sales_out
-                    st.success("✅ Sales data processed successfully!")
-                except Exception as e:
-                    st.error(f"Error processing sales: {e}")
+            form26as_path = None
+            if form26as_file is not None:
+                form26as_path = "temp_workspace/form26as.pdf"
+                with open(form26as_path, "wb") as f:
+                    f.write(form26as_file.getvalue())
+            
+            try:
+                df_final, df_ledgers = process_sales_data(gstr1_path, None, form26as_path)
+                sales_out = "temp_workspace/sales_output.xlsx"
+                with pd.ExcelWriter(sales_out) as writer:
+                    df_final.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
+                    df_ledgers.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
+                st.session_state['sales_out'] = sales_out
+                st.success("✅ Sales data processed successfully!")
+            except Exception as e:
+                st.error(f"Error processing sales: {e}")
         else:
             st.warning("Please upload at least the GSTR1 file.")
 
@@ -65,13 +64,13 @@ with tab2:
             from google import genai
             from purchase_processor import process_purchase_data
             
-            with tempfile.NamedTemporaryFile(delete=False, suffix="." + moa_file.name.split('.')[-1]) as tmp_file:
-                tmp_file.write(moa_file.read())
-                tmp_path = tmp_file.name
+            moa_path = "temp_workspace/moa_file." + moa_file.name.split('.')[-1]
+            with open(moa_path, "wb") as f:
+                f.write(moa_file.getvalue())
                 
             try:
                 client = genai.Client()
-                uploaded_moa = client.files.upload(file=tmp_path)
+                uploaded_moa = client.files.upload(file=moa_path)
                 
                 moa_prompt = "Read this document. Extract the primary business objective and determine the core industry of the client. Be concise."
                 moa_response = client.models.generate_content(
@@ -82,20 +81,20 @@ with tab2:
                 st.success(f"**Detected Industry:** {detected_industry}")
                 
                 st.info("Processing Vendor Data and classifying categories...")
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_gstr2b:
-                    tmp_gstr2b.write(gstr2b_file.read())
-                    df_final, df_ledgers = process_purchase_data(tmp_gstr2b.name, detected_industry)
-                    purch_out = "temp_workspace/purchases_output.xlsx"
-                    with pd.ExcelWriter(purch_out) as writer:
-                        df_final.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
-                        df_ledgers.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
-                    st.session_state['purch_out'] = purch_out
-                    st.success("✅ Purchase data processed successfully!")
+                gstr2b_path = "temp_workspace/gstr2b.xlsx"
+                with open(gstr2b_path, "wb") as f:
+                    f.write(gstr2b_file.getvalue())
+                
+                df_final, df_ledgers = process_purchase_data(gstr2b_path, detected_industry)
+                purch_out = "temp_workspace/purchases_output.xlsx"
+                with pd.ExcelWriter(purch_out) as writer:
+                    df_final.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
+                    df_ledgers.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
+                st.session_state['purch_out'] = purch_out
+                st.success("✅ Purchase data processed successfully!")
                     
             except Exception as e:
                 st.error(f"Error reading MOA with AI or processing purchases: {e}")
-            finally:
-                os.remove(tmp_path)
         else:
             st.warning("Please upload both the GSTR2B file and the MOA file.")
 
@@ -115,16 +114,19 @@ with tab3:
             else:
                 st.info("Reconciling Sales, Purchases, and processing unknown narrations with AI...")
                 from bank_processor import process_bank_statement
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_bank:
-                    tmp_bank.write(bank_file.read())
-                    try:
-                        bank_df = process_bank_statement(tmp_bank.name, st.session_state['sales_out'], st.session_state['purch_out'])
-                        bank_out = "temp_workspace/bank_output.xlsx"
-                        bank_df.to_excel(bank_out, sheet_name="Bank", index=False)
-                        st.session_state['bank_out'] = bank_out
-                        st.success("✅ Bank Reconciliation Engine completed successfully!")
-                    except Exception as e:
-                        st.error(f"Error processing bank data: {e}")
+                
+                bank_path = "temp_workspace/bank_upload.xlsx"
+                with open(bank_path, "wb") as f:
+                    f.write(bank_file.getvalue())
+                
+                try:
+                    bank_df = process_bank_statement(bank_path, st.session_state['sales_out'], st.session_state['purch_out'])
+                    bank_out = "temp_workspace/bank_output.xlsx"
+                    bank_df.to_excel(bank_out, sheet_name="Bank", index=False)
+                    st.session_state['bank_out'] = bank_out
+                    st.success("✅ Bank Reconciliation Engine completed successfully!")
+                except Exception as e:
+                    st.error(f"Error processing bank data: {e}")
         else:
             st.warning("Please upload the Bank Statement.")
 
@@ -158,7 +160,6 @@ with tab4:
             st.warning("Please complete processing in Sales, Purchases, and Bank tabs first.")
 
 st.sidebar.header("Settings")
-# Check if API Key is already configured via secrets or environment variables
 secret_api_key = st.secrets.get("GEMINI_API_KEY") if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets else None
 env_api_key = os.environ.get("GEMINI_API_KEY")
 actual_key = secret_api_key or env_api_key
