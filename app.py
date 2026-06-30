@@ -46,6 +46,11 @@ with tab1:
         else:
             st.warning("Please upload at least the GSTR1 file.")
 
+    if 'sales_out' in st.session_state and os.path.exists(st.session_state['sales_out']):
+        st.markdown("---")
+        with open(st.session_state['sales_out'], "rb") as file:
+            st.download_button("⬇️ Download Processed Sales Excel", data=file, file_name="Processed_Sales.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 with tab2:
     st.header("Upload Purchase Data")
     gstr2b_file = st.file_uploader("Upload GSTR2B (Excel/CSV)", type=["csv", "xlsx", "xls"], key="gstr2b")
@@ -94,6 +99,11 @@ with tab2:
         else:
             st.warning("Please upload both the GSTR2B file and the MOA file.")
 
+    if 'purch_out' in st.session_state and os.path.exists(st.session_state['purch_out']):
+        st.markdown("---")
+        with open(st.session_state['purch_out'], "rb") as file:
+            st.download_button("⬇️ Download Processed Purchases Excel", data=file, file_name="Processed_Purchases.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 with tab3:
     st.header("Upload Bank Statements")
     bank_file = st.file_uploader("Upload Bank Statement (Excel/CSV)", type=["csv", "xlsx", "xls"], key="bank")
@@ -117,6 +127,11 @@ with tab3:
                         st.error(f"Error processing bank data: {e}")
         else:
             st.warning("Please upload the Bank Statement.")
+
+    if 'bank_out' in st.session_state and os.path.exists(st.session_state['bank_out']):
+        st.markdown("---")
+        with open(st.session_state['bank_out'], "rb") as file:
+            st.download_button("⬇️ Download Analysed Bank Excel", data=file, file_name="Analysed_Bank.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tab4:
     st.header("Generate Final Tally Dashboard")
