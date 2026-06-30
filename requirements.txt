@@ -1,5 +1,7 @@
 pandas
 openpyxl
 streamlit
-google-generativeai
+google-genai
 python-dotenv
+pdfplumber
+pillow
