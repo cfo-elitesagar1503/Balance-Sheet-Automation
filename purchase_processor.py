@@ -91,7 +91,7 @@ def classify_suppliers_with_ai(suppliers, moa_text=None):
     prompt += "\nSuppliers to classify:\n" + json.dumps(suppliers)
     
     try:
-        client = genai.Client(api_key=API_KEY)
+        client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,

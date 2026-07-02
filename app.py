@@ -9,12 +9,28 @@ st.markdown("Automate your GSTR1, GSTR2B, and Bank Statement accounting entries 
 
 os.makedirs("temp_workspace", exist_ok=True)
 
+st.sidebar.header("Settings")
+secret_api_key = st.secrets.get("GEMINI_API_KEY") if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets else None
+env_api_key = os.environ.get("GEMINI_API_KEY")
+actual_key = secret_api_key or env_api_key
+
+if actual_key:
+    os.environ["GEMINI_API_KEY"] = actual_key
+    st.sidebar.success("✅ API Key securely loaded!")
+else:
+    api_key = st.sidebar.text_input("Gemini API Key", type="password")
+    if api_key:
+        os.environ["GEMINI_API_KEY"] = api_key
+        st.sidebar.success("API Key saved for this session.")
+    else:
+        st.sidebar.warning("Please enter your Tier 1 Gemini API Key to use AI features.")
+
 # Create tabs for different phases of the project
 tab1, tab2, tab3, tab4 = st.tabs(["1. Sales (GSTR1)", "2. Purchases (GSTR2B)", "3. Bank Statements", "4. Final Output"])
 
 with tab1:
     st.header("Upload Sales Data")
-    gstr1_file = st.file_uploader("Upload GSTR1 (Excel/CSV)", type=["csv", "xlsx", "xls"], key="gstr1")
+    gstr1_file = st.file_uploader("Upload GSTR1 (Excel Only)", type=["xlsx", "xls"], key="gstr1")
     form26as_file = st.file_uploader("Upload Form 26AS (PDF)", type=["pdf"], key="26as")
     
     if st.button("Process Sales Data"):
@@ -22,7 +38,8 @@ with tab1:
             st.info("Processing Sales data...")
             from sales_processor import process_sales_data
             
-            gstr1_path = "temp_workspace/gstr1.xlsx"
+            gstr1_ext = gstr1_file.name.split('.')[-1]
+            gstr1_path = f"temp_workspace/gstr1.{gstr1_ext}"
             with open(gstr1_path, "wb") as f:
                 f.write(gstr1_file.getvalue())
                 
@@ -52,7 +69,7 @@ with tab1:
 
 with tab2:
     st.header("Upload Purchase Data")
-    gstr2b_file = st.file_uploader("Upload GSTR2B (Excel/CSV)", type=["csv", "xlsx", "xls"], key="gstr2b")
+    gstr2b_file = st.file_uploader("Upload GSTR2B (Excel Only)", type=["xlsx", "xls"], key="gstr2b")
     
     st.markdown("### Client Industry Detection")
     st.markdown("Upload the MOA (Memorandum of Association) so Gemini AI can automatically determine the core business objective and accurately categorize expenses.")
@@ -81,7 +98,8 @@ with tab2:
                 st.success(f"**Detected Industry:** {detected_industry}")
                 
                 st.info("Processing Vendor Data and classifying categories...")
-                gstr2b_path = "temp_workspace/gstr2b.xlsx"
+                gstr2b_ext = gstr2b_file.name.split('.')[-1]
+                gstr2b_path = f"temp_workspace/gstr2b.{gstr2b_ext}"
                 with open(gstr2b_path, "wb") as f:
                     f.write(gstr2b_file.getvalue())
                 
@@ -144,7 +162,8 @@ with tab3:
                 st.info("Reconciling Sales, Purchases, and processing unknown narrations with AI...")
                 from bank_processor import process_bank_statement
                 
-                bank_path = "temp_workspace/bank_upload.xlsx"
+                bank_ext = bank_file.name.split('.')[-1]
+                bank_path = f"temp_workspace/bank_upload.{bank_ext}"
                 with open(bank_path, "wb") as f:
                     f.write(bank_file.getvalue())
                 
@@ -187,19 +206,3 @@ with tab4:
                 st.error(f"Error generating dashboard: {e}")
         else:
             st.warning("Please complete processing in Sales, Purchases, and Bank tabs first.")
-
-st.sidebar.header("Settings")
-secret_api_key = st.secrets.get("GEMINI_API_KEY") if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets else None
-env_api_key = os.environ.get("GEMINI_API_KEY")
-actual_key = secret_api_key or env_api_key
-
-if actual_key:
-    os.environ["GEMINI_API_KEY"] = actual_key
-    st.sidebar.success("✅ API Key securely loaded!")
-else:
-    api_key = st.sidebar.text_input("Gemini API Key", type="password")
-    if api_key:
-        os.environ["GEMINI_API_KEY"] = api_key
-        st.sidebar.success("API Key saved for this session.")
-    else:
-        st.sidebar.warning("Please enter your Tier 1 Gemini API Key to use AI features.")

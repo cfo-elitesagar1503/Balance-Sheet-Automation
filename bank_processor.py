@@ -181,7 +181,7 @@ def classify_with_ai(transactions, debtors_invoices, creditors_invoices):
     prompt += "\nTransactions:\n" + json.dumps(transactions)
     
     try:
-        client = genai.Client(api_key=API_KEY)
+        client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
