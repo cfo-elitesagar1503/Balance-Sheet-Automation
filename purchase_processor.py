@@ -111,26 +111,33 @@ def process_purchase_data(gstr2b_path, moa_text=None):
     
     # 1. First pass to extract all supplier names for AI
     try:
-        df_b2b_raw = pd.read_excel(gstr2b_path, sheet_name='B2B', header=None)
-        party_col_idx = get_col_index(df_b2b_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
-        h_idx_b2b = find_header_row(gstr2b_path, 'B2B', 'Invoice number')
-        if h_idx_b2b == 0:
-            h_idx_b2b = find_header_row(gstr2b_path, 'B2B', 'Recipients Name')
-            
-        if party_col_idx != -1:
-            supplier_names.update(df_b2b_raw.iloc[h_idx_b2b+1:, party_col_idx].dropna().unique().tolist())
-    except:
+        xl = pd.ExcelFile(gstr2b_path)
+        sheet_names = xl.sheet_names
+        b2b_sheet = next((s for s in sheet_names if any(x in s.lower() for x in ['b2b', 'invoice', 'invoices'])), None)
+        
+        if b2b_sheet:
+            df_b2b_raw = pd.read_excel(gstr2b_path, sheet_name=b2b_sheet, header=None)
+            party_col_idx = get_col_index(df_b2b_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
+            h_idx_b2b = find_header_row(gstr2b_path, b2b_sheet, 'Invoice number')
+            if h_idx_b2b == 0:
+                h_idx_b2b = find_header_row(gstr2b_path, b2b_sheet, 'Recipients Name')
+                
+            if party_col_idx != -1:
+                supplier_names.update(df_b2b_raw.iloc[h_idx_b2b+1:, party_col_idx].dropna().unique().tolist())
+    except Exception as e:
         pass
         
     try:
-        df_cdnr_raw = pd.read_excel(gstr2b_path, sheet_name='B2B-CDNR', header=None)
-        party_col_idx = get_col_index(df_cdnr_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
-        h_idx_cdnr = find_header_row(gstr2b_path, 'B2B-CDNR', 'Note number')
-        if h_idx_cdnr == 0:
-            h_idx_cdnr = find_header_row(gstr2b_path, 'B2B-CDNR', 'Recipients Name')
-            
-        if party_col_idx != -1:
-            supplier_names.update(df_cdnr_raw.iloc[h_idx_cdnr+1:, party_col_idx].dropna().unique().tolist())
+        cdnr_sheet = next((s for s in sheet_names if any(x in s.lower() for x in ['cdnr', 'note', 'credit note'])), None)
+        if cdnr_sheet:
+            df_cdnr_raw = pd.read_excel(gstr2b_path, sheet_name=cdnr_sheet, header=None)
+            party_col_idx = get_col_index(df_cdnr_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
+            h_idx_cdnr = find_header_row(gstr2b_path, cdnr_sheet, 'Note number')
+            if h_idx_cdnr == 0:
+                h_idx_cdnr = find_header_row(gstr2b_path, cdnr_sheet, 'Recipients Name')
+                
+            if party_col_idx != -1:
+                supplier_names.update(df_cdnr_raw.iloc[h_idx_cdnr+1:, party_col_idx].dropna().unique().tolist())
     except:
         pass
         
@@ -142,141 +149,143 @@ def process_purchase_data(gstr2b_path, moa_text=None):
     
     # 3. Process B2B
     try:
-        party_col = get_col_index(df_b2b_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
-        taxable_col = get_col_index(df_b2b_raw, ['Taxable Value (\u20b9)', 'Taxable Value ()', 'Taxable Value', 'Taxable value'])
-        cgst_col = get_col_index(df_b2b_raw, ['Central Tax(\u20b9)', 'Central Tax()', 'Central Tax', 'CGST'])
-        sgst_col = get_col_index(df_b2b_raw, ['State/UT Tax(\u20b9)', 'State/UT Tax()', 'State/UT Tax', 'SGST'])
-        igst_col = get_col_index(df_b2b_raw, ['Integrated Tax(\u20b9)', 'Integrated Tax()', 'Integrated Tax', 'IGST'])
-        inv_num_col = get_col_index(df_b2b_raw, ['Invoice number', 'Invoice No'])
-        inv_date_col = get_col_index(df_b2b_raw, ['Invoice Date', 'Invoice date'])
-        
-        df_b2b = df_b2b_raw.iloc[h_idx_b2b+1:].dropna(subset=[inv_num_col])
-        for _, row in df_b2b.iterrows():
-            party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
+        if b2b_sheet and 'df_b2b_raw' in locals():
+            party_col = get_col_index(df_b2b_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
+            taxable_col = get_col_index(df_b2b_raw, ['Taxable Value (\u20b9)', 'Taxable Value ()', 'Taxable Value', 'Taxable value'])
+            cgst_col = get_col_index(df_b2b_raw, ['Central Tax(\u20b9)', 'Central Tax()', 'Central Tax', 'CGST'])
+            sgst_col = get_col_index(df_b2b_raw, ['State/UT Tax(\u20b9)', 'State/UT Tax()', 'State/UT Tax', 'SGST'])
+            igst_col = get_col_index(df_b2b_raw, ['Integrated Tax(\u20b9)', 'Integrated Tax()', 'Integrated Tax', 'IGST'])
+            inv_num_col = get_col_index(df_b2b_raw, ['Invoice number', 'Invoice No'])
+            inv_date_col = get_col_index(df_b2b_raw, ['Invoice Date', 'Invoice date'])
             
-            try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
-            except: taxable_val = 0
-            
-            try: cgst_amt = float(row[cgst_col]) if cgst_col != -1 and pd.notna(row[cgst_col]) else 0
-            except: cgst_amt = 0
-            
-            try: sgst_amt = float(row[sgst_col]) if sgst_col != -1 and pd.notna(row[sgst_col]) else 0
-            except: sgst_amt = 0
-            
-            try: igst_amt = float(row[igst_col]) if igst_col != -1 and pd.notna(row[igst_col]) else 0
-            except: igst_amt = 0
-            
-            inv_num = str(row[inv_num_col]).strip() if inv_num_col != -1 and pd.notna(row[inv_num_col]) else ''
-            inv_date = str(row[inv_date_col]).strip() if inv_date_col != -1 and pd.notna(row[inv_date_col]) else ''
-            
-            clean_p = str(party_name).upper().strip()
-            if any(ca_firm in clean_p for ca_firm in CA_FIRMS):
-                purchase_ledger = "Legal & Professional Fees"
-                purchase_group = "Indirect Expenses"
-                party_group = "Current Liabilities"
-            else:
-                mapping = ai_mappings.get(party_name, {})
-                purchase_ledger = mapping.get('Purchase Ledger Name', 'Purchases')
-                purchase_group = mapping.get('Purchase Group', 'Purchase Accounts')
-                party_group = mapping.get('Party Group', 'Sundry Creditors')
+            df_b2b = df_b2b_raw.iloc[h_idx_b2b+1:].dropna(subset=[inv_num_col])
+            for _, row in df_b2b.iterrows():
+                party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
+                
+                try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
+                except: taxable_val = 0
+                
+                try: cgst_amt = float(row[cgst_col]) if cgst_col != -1 and pd.notna(row[cgst_col]) else 0
+                except: cgst_amt = 0
+                
+                try: sgst_amt = float(row[sgst_col]) if sgst_col != -1 and pd.notna(row[sgst_col]) else 0
+                except: sgst_amt = 0
+                
+                try: igst_amt = float(row[igst_col]) if igst_col != -1 and pd.notna(row[igst_col]) else 0
+                except: igst_amt = 0
+                
+                inv_num = str(row[inv_num_col]).strip() if inv_num_col != -1 and pd.notna(row[inv_num_col]) else ''
+                inv_date = str(row[inv_date_col]).strip() if inv_date_col != -1 and pd.notna(row[inv_date_col]) else ''
+                
+                clean_p = str(party_name).upper().strip()
+                if any(ca_firm in clean_p for ca_firm in CA_FIRMS):
+                    purchase_ledger = "Legal & Professional Fees"
+                    purchase_group = "Indirect Expenses"
+                    party_group = "Current Liabilities"
+                else:
+                    mapping = ai_mappings.get(party_name, {})
+                    purchase_ledger = mapping.get('Purchase Ledger Name', 'Purchases')
+                    purchase_group = mapping.get('Purchase Group', 'Purchase Accounts')
+                    party_group = mapping.get('Party Group', 'Sundry Creditors')
 
-            if party_group == "Current Liabilities" and purchase_group == "Indirect Expenses":
-                voucher_type = "Journal"
-            elif party_group == "Sundry Creditors":
-                voucher_type = "Purchase"
-            else:
-                voucher_type = "Journal"
+                if party_group == "Current Liabilities" and purchase_group == "Indirect Expenses":
+                    voucher_type = "Journal"
+                elif party_group == "Sundry Creditors":
+                    voucher_type = "Purchase"
+                else:
+                    voucher_type = "Journal"
 
-            final_rows.append({
-                'Date': format_date(inv_date),
-                'Voucher Type': voucher_type,
-                'Voucher Number': inv_num,
-                'Party Ledger': party_name,
-                'Purchase Ledger': purchase_ledger,
-                'Purchase Item Name': '',
-                'Purchase Item Qty': '',
-                'Purchase Item UOM': '',
-                'Purchase Item Rate': '',
-                'Taxable Value': taxable_val,
-                'CGST Ledger': 'Input CGST' if cgst_amt > 0 else '',
-                'CGST Rate': get_rounded_rate(cgst_amt, taxable_val),
-                'SGST Ledger': 'Input SGST' if sgst_amt > 0 else '',
-                'SGST Rate': get_rounded_rate(sgst_amt, taxable_val),
-                'IGST Ledger': 'Input IGST' if igst_amt > 0 else '',
-                'IGST Rate': get_rounded_rate(igst_amt, taxable_val),
-                'Narration': f"Being purchase made from {party_name}",
-            })
+                final_rows.append({
+                    'Date': format_date(inv_date),
+                    'Voucher Type': voucher_type,
+                    'Voucher Number': inv_num,
+                    'Party Ledger': party_name,
+                    'Purchase Ledger': purchase_ledger,
+                    'Purchase Item Name': '',
+                    'Purchase Item Qty': '',
+                    'Purchase Item UOM': '',
+                    'Purchase Item Rate': '',
+                    'Taxable Value': taxable_val,
+                    'CGST Ledger': 'Input CGST' if cgst_amt > 0 else '',
+                    'CGST Rate': get_rounded_rate(cgst_amt, taxable_val),
+                    'SGST Ledger': 'Input SGST' if sgst_amt > 0 else '',
+                    'SGST Rate': get_rounded_rate(sgst_amt, taxable_val),
+                    'IGST Ledger': 'Input IGST' if igst_amt > 0 else '',
+                    'IGST Rate': get_rounded_rate(igst_amt, taxable_val),
+                    'Narration': f"Being purchase made from {party_name}",
+                })
     except Exception as e:
-        print(f"Error processing B2B purchases: {e}")
+        raise Exception(f"Error processing B2B Purchases: {e}")
 
     # 4. Process B2B-CDNR
     try:
-        party_col = get_col_index(df_cdnr_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
-        taxable_col = get_col_index(df_cdnr_raw, ['Taxable Value (\u20b9)', 'Taxable Value ()', 'Taxable Value', 'Taxable value', 'Note Value'])
-        cgst_col = get_col_index(df_cdnr_raw, ['Central Tax(\u20b9)', 'Central Tax()', 'Central Tax', 'CGST'])
-        sgst_col = get_col_index(df_cdnr_raw, ['State/UT Tax(\u20b9)', 'State/UT Tax()', 'State/UT Tax', 'SGST'])
-        igst_col = get_col_index(df_cdnr_raw, ['Integrated Tax(\u20b9)', 'Integrated Tax()', 'Integrated Tax', 'IGST'])
-        note_num_col = get_col_index(df_cdnr_raw, ['Note number', 'Note No'])
-        note_date_col = get_col_index(df_cdnr_raw, ['Note date', 'Note Date'])
-        note_type_col = get_col_index(df_cdnr_raw, ['Note type', 'Note Type'])
-        
-        df_cdnr = df_cdnr_raw.iloc[h_idx_cdnr+1:].dropna(subset=[note_num_col])
-        for _, row in df_cdnr.iterrows():
-            party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
+        if 'cdnr_sheet' in locals() and cdnr_sheet and 'df_cdnr_raw' in locals():
+            party_col = get_col_index(df_cdnr_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
+            taxable_col = get_col_index(df_cdnr_raw, ['Taxable Value (\u20b9)', 'Taxable Value ()', 'Taxable Value', 'Taxable value', 'Note Value'])
+            cgst_col = get_col_index(df_cdnr_raw, ['Central Tax(\u20b9)', 'Central Tax()', 'Central Tax', 'CGST'])
+            sgst_col = get_col_index(df_cdnr_raw, ['State/UT Tax(\u20b9)', 'State/UT Tax()', 'State/UT Tax', 'SGST'])
+            igst_col = get_col_index(df_cdnr_raw, ['Integrated Tax(\u20b9)', 'Integrated Tax()', 'Integrated Tax', 'IGST'])
+            note_num_col = get_col_index(df_cdnr_raw, ['Note number', 'Note No'])
+            note_date_col = get_col_index(df_cdnr_raw, ['Note date', 'Note Date'])
+            note_type_col = get_col_index(df_cdnr_raw, ['Note type', 'Note Type'])
             
-            try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
-            except: taxable_val = 0
-            
-            try: cgst_amt = float(row[cgst_col]) if cgst_col != -1 and pd.notna(row[cgst_col]) else 0
-            except: cgst_amt = 0
-            
-            try: sgst_amt = float(row[sgst_col]) if sgst_col != -1 and pd.notna(row[sgst_col]) else 0
-            except: sgst_amt = 0
-            
-            try: igst_amt = float(row[igst_col]) if igst_col != -1 and pd.notna(row[igst_col]) else 0
-            except: igst_amt = 0
-            
-            note_num = str(row[note_num_col]).strip() if note_num_col != -1 and pd.notna(row[note_num_col]) else ''
-            note_date = str(row[note_date_col]).strip() if note_date_col != -1 and pd.notna(row[note_date_col]) else ''
-            note_type = str(row[note_type_col]).strip().upper() if note_type_col != -1 and pd.notna(row[note_type_col]) else ''
-            if note_type == 'C':
-                voucher_type = 'Debit Note'
-                narration = f"Being purchase return / debit note for {party_name}"
-            elif note_type == 'D':
-                voucher_type = 'Credit Note'
-                narration = f"Being purchase value increase / credit note from {party_name}"
-            else:
-                voucher_type = 'Journal'
-                narration = f"Being adjustment for {party_name}"
+            df_cdnr = df_cdnr_raw.iloc[h_idx_cdnr+1:].dropna(subset=[note_num_col])
+            for _, row in df_cdnr.iterrows():
+                party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
+                
+                try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
+                except: taxable_val = 0
+                
+                try: cgst_amt = float(row[cgst_col]) if cgst_col != -1 and pd.notna(row[cgst_col]) else 0
+                except: cgst_amt = 0
+                
+                try: sgst_amt = float(row[sgst_col]) if sgst_col != -1 and pd.notna(row[sgst_col]) else 0
+                except: sgst_amt = 0
+                
+                try: igst_amt = float(row[igst_col]) if igst_col != -1 and pd.notna(row[igst_col]) else 0
+                except: igst_amt = 0
+                
+                note_num = str(row[note_num_col]).strip() if note_num_col != -1 and pd.notna(row[note_num_col]) else ''
+                note_date = str(row[note_date_col]).strip() if note_date_col != -1 and pd.notna(row[note_date_col]) else ''
+                note_type = str(row[note_type_col]).strip().upper() if note_type_col != -1 and pd.notna(row[note_type_col]) else ''
+                if note_type == 'C':
+                    voucher_type = 'Debit Note'
+                    narration = f"Being purchase return / debit note for {party_name}"
+                elif note_type == 'D':
+                    voucher_type = 'Credit Note'
+                    narration = f"Being purchase value increase / credit note from {party_name}"
+                else:
+                    voucher_type = 'Journal'
+                    narration = f"Being adjustment for {party_name}"
 
-            clean_p = str(party_name).upper().strip()
-            if any(ca_firm in clean_p for ca_firm in CA_FIRMS):
-                purchase_ledger = "Legal & Professional Fees"
-            else:
-                mapping = ai_mappings.get(party_name, {})
-                purchase_ledger = mapping.get('Purchase Ledger Name', 'Purchases')
+                clean_p = str(party_name).upper().strip()
+                if any(ca_firm in clean_p for ca_firm in CA_FIRMS):
+                    purchase_ledger = "Legal & Professional Fees"
+                else:
+                    mapping = ai_mappings.get(party_name, {})
+                    purchase_ledger = mapping.get('Purchase Ledger Name', 'Purchases')
 
-            final_rows.append({
-                'Date': format_date(note_date),
-                'Voucher Type': voucher_type,
-                'Voucher Number': note_num,
-                'Party Ledger': party_name,
-                'Purchase Ledger': purchase_ledger,
-                'Purchase Item Name': '',
-                'Purchase Item Qty': '',
-                'Purchase Item UOM': '',
-                'Purchase Item Rate': '',
-                'Taxable Value': taxable_val,
-                'CGST Ledger': 'Input CGST' if cgst_amt > 0 else '',
-                'CGST Rate': get_rounded_rate(cgst_amt, taxable_val),
-                'SGST Ledger': 'Input SGST' if sgst_amt > 0 else '',
-                'SGST Rate': get_rounded_rate(sgst_amt, taxable_val),
-                'IGST Ledger': 'Input IGST' if igst_amt > 0 else '',
-                'IGST Rate': get_rounded_rate(igst_amt, taxable_val),
-                'Narration': narration,
-            })
+                final_rows.append({
+                    'Date': format_date(note_date),
+                    'Voucher Type': voucher_type,
+                    'Voucher Number': note_num,
+                    'Party Ledger': party_name,
+                    'Purchase Ledger': purchase_ledger,
+                    'Purchase Item Name': '',
+                    'Purchase Item Qty': '',
+                    'Purchase Item UOM': '',
+                    'Purchase Item Rate': '',
+                    'Taxable Value': taxable_val,
+                    'CGST Ledger': 'Input CGST' if cgst_amt > 0 else '',
+                    'CGST Rate': get_rounded_rate(cgst_amt, taxable_val),
+                    'SGST Ledger': 'Input SGST' if sgst_amt > 0 else '',
+                    'SGST Rate': get_rounded_rate(sgst_amt, taxable_val),
+                    'IGST Ledger': 'Input IGST' if igst_amt > 0 else '',
+                    'IGST Rate': get_rounded_rate(igst_amt, taxable_val),
+                    'Narration': narration,
+                })
     except Exception as e:
-        print(f"Error processing B2B-CDNR: {e}")
+        raise Exception(f"Error processing Purchase CDNR: {e}")
 
     # 5. Build Result DataFrame
     cols = ['Date', 'Voucher Type', 'Voucher Number', 'Party Ledger', 'Purchase Ledger', 

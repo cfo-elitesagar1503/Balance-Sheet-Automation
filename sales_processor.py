@@ -100,7 +100,7 @@ def process_sales_data(b2b_path, b2c_path, form_26as_path=None):
     try:
         xl = pd.ExcelFile(b2b_path)
         sheet_names = xl.sheet_names
-        b2b_sheet = next((s for s in sheet_names if s.lower() in ['b2b', 'invoice', 'invoices']), None)
+        b2b_sheet = next((s for s in sheet_names if any(x in s.lower() for x in ['b2b', 'invoice', 'invoices'])), None)
         
         if b2b_sheet:
             df_b2b_raw = pd.read_excel(b2b_path, sheet_name=b2b_sheet, header=None)
@@ -178,13 +178,13 @@ def process_sales_data(b2b_path, b2c_path, form_26as_path=None):
                     'TDS Note': tds_note
                 })
     except Exception as e:
-        print(f"Error processing B2B: {e}")
+        raise Exception(f"Error processing B2B Sales Data: {e}")
 
     # --- 1.5 Process B2B Notes (Credit Notes) ---
     try:
         xl = pd.ExcelFile(b2b_path)
         sheet_names = xl.sheet_names
-        note_sheet = next((s for s in sheet_names if s.lower() in ['cdnr', 'note', 'credit note']), None)
+        note_sheet = next((s for s in sheet_names if any(x in s.lower() for x in ['cdnr', 'note', 'credit note'])), None)
         
         if note_sheet:
             df_note_raw = pd.read_excel(b2b_path, sheet_name=note_sheet, header=None)
@@ -243,7 +243,7 @@ def process_sales_data(b2b_path, b2c_path, form_26as_path=None):
                     'TDS Note': ''
                 })
     except Exception as e:
-        print(f"Error processing B2B notes (Credit Notes): {e}")
+        raise Exception(f"Error processing B2B Credit Notes: {e}")
 
     # --- 2. Process B2C Data ---
     try:
@@ -327,7 +327,7 @@ def process_sales_data(b2b_path, b2c_path, form_26as_path=None):
                 })
                 b2c_counter += 1
     except Exception as e:
-        print(f"Error processing B2C: {e}")
+        raise Exception(f"Error processing B2C Sales Data: {e}")
 
     # Convert to DataFrame
     df_final = pd.DataFrame(final_rows)
