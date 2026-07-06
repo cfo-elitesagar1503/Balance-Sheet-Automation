@@ -28,7 +28,7 @@ def get_col_index(df, possible_names, search_rows=10):
         for row_idx in range(min(search_rows, len(df))):
             val = str(df.iloc[row_idx, idx]).strip().lower()
             for name in possible_names:
-                if name.lower() == val:
+                if name.lower() == val or name.lower() in val:
                     return idx
     return -1
 
@@ -150,16 +150,27 @@ def process_purchase_data(gstr2b_path, moa_text=None):
     # 3. Process B2B
     try:
         if b2b_sheet and 'df_b2b_raw' in locals():
-            party_col = get_col_index(df_b2b_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
+            party_col = get_col_index(df_b2b_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name', 'Party Name'])
             taxable_col = get_col_index(df_b2b_raw, ['Taxable Value (\u20b9)', 'Taxable Value ()', 'Taxable Value', 'Taxable value'])
             cgst_col = get_col_index(df_b2b_raw, ['Central Tax(\u20b9)', 'Central Tax()', 'Central Tax', 'CGST'])
             sgst_col = get_col_index(df_b2b_raw, ['State/UT Tax(\u20b9)', 'State/UT Tax()', 'State/UT Tax', 'SGST'])
             igst_col = get_col_index(df_b2b_raw, ['Integrated Tax(\u20b9)', 'Integrated Tax()', 'Integrated Tax', 'IGST'])
-            inv_num_col = get_col_index(df_b2b_raw, ['Invoice number', 'Invoice No'])
-            inv_date_col = get_col_index(df_b2b_raw, ['Invoice Date', 'Invoice date'])
+            inv_num_col = get_col_index(df_b2b_raw, ['Invoice number', 'Invoice No', 'Invoice'])
+            inv_date_col = get_col_index(df_b2b_raw, ['Invoice Date', 'Invoice date', 'Date'])
             
-            df_b2b = df_b2b_raw.iloc[h_idx_b2b+1:].dropna(subset=[inv_num_col])
+            # Safely get header index if not defined
+            if 'h_idx_b2b' not in locals():
+                h_idx_b2b = find_header_row(gstr2b_path, b2b_sheet, 'Invoice number')
+                if h_idx_b2b == 0:
+                    h_idx_b2b = find_header_row(gstr2b_path, b2b_sheet, 'Supplier Name')
+            
+            df_b2b = df_b2b_raw.iloc[h_idx_b2b+1:]
+            if inv_num_col != -1:
+                df_b2b = df_b2b.dropna(subset=[inv_num_col])
+                
             for _, row in df_b2b.iterrows():
+                if inv_num_col != -1 and pd.isna(row[inv_num_col]): continue
+                
                 party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
                 
                 try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
@@ -220,17 +231,27 @@ def process_purchase_data(gstr2b_path, moa_text=None):
     # 4. Process B2B-CDNR
     try:
         if 'cdnr_sheet' in locals() and cdnr_sheet and 'df_cdnr_raw' in locals():
-            party_col = get_col_index(df_cdnr_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name'])
+            party_col = get_col_index(df_cdnr_raw, ['Trade/Legal name', 'Trade/Legal Name', 'Recipients Name', 'Supplier Name', 'Party Name'])
             taxable_col = get_col_index(df_cdnr_raw, ['Taxable Value (\u20b9)', 'Taxable Value ()', 'Taxable Value', 'Taxable value', 'Note Value'])
             cgst_col = get_col_index(df_cdnr_raw, ['Central Tax(\u20b9)', 'Central Tax()', 'Central Tax', 'CGST'])
             sgst_col = get_col_index(df_cdnr_raw, ['State/UT Tax(\u20b9)', 'State/UT Tax()', 'State/UT Tax', 'SGST'])
             igst_col = get_col_index(df_cdnr_raw, ['Integrated Tax(\u20b9)', 'Integrated Tax()', 'Integrated Tax', 'IGST'])
-            note_num_col = get_col_index(df_cdnr_raw, ['Note number', 'Note No'])
-            note_date_col = get_col_index(df_cdnr_raw, ['Note date', 'Note Date'])
+            note_num_col = get_col_index(df_cdnr_raw, ['Note number', 'Note No', 'Note'])
+            note_date_col = get_col_index(df_cdnr_raw, ['Note date', 'Note Date', 'Date'])
             note_type_col = get_col_index(df_cdnr_raw, ['Note type', 'Note Type'])
             
-            df_cdnr = df_cdnr_raw.iloc[h_idx_cdnr+1:].dropna(subset=[note_num_col])
+            if 'h_idx_cdnr' not in locals():
+                h_idx_cdnr = find_header_row(gstr2b_path, cdnr_sheet, 'Note number')
+                if h_idx_cdnr == 0:
+                    h_idx_cdnr = find_header_row(gstr2b_path, cdnr_sheet, 'Supplier Name')
+
+            df_cdnr = df_cdnr_raw.iloc[h_idx_cdnr+1:]
+            if note_num_col != -1:
+                df_cdnr = df_cdnr.dropna(subset=[note_num_col])
+                
             for _, row in df_cdnr.iterrows():
+                if note_num_col != -1 and pd.isna(row[note_num_col]): continue
+                
                 party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
                 
                 try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
