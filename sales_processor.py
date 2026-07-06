@@ -98,140 +98,150 @@ def process_sales_data(b2b_path, b2c_path, form_26as_path=None):
     
     # --- 1. Process B2B Data ---
     try:
-        df_b2b_raw = pd.read_excel(b2b_path, sheet_name='invoice', header=None)
-        h_idx_b2b = find_header_row(b2b_path, 'invoice', 'Invoice No')
-        if h_idx_b2b == 0:
-            h_idx_b2b = find_header_row(b2b_path, 'invoice', 'Recipients Name')
-
-        party_col = get_col_index(df_b2b_raw, ['Receiver Name', 'Recipients Name', 'Party Name'])
-        inv_num_col = get_col_index(df_b2b_raw, ['Invoice Number', 'Invoice No'])
-        inv_date_col = get_col_index(df_b2b_raw, ['Invoice Date'])
-        taxable_col = get_col_index(df_b2b_raw, ['Taxable Value', 'Taxable value'])
-        cgst_col = get_col_index(df_b2b_raw, ['Central Tax', 'CGST', 'Central Tax Amount'])
-        sgst_col = get_col_index(df_b2b_raw, ['State/UT Tax', 'SGST', 'State Tax Amount'])
-        igst_col = get_col_index(df_b2b_raw, ['Integrated Tax', 'IGST', 'Integrated Tax Amount'])
+        xl = pd.ExcelFile(b2b_path)
+        sheet_names = xl.sheet_names
+        b2b_sheet = next((s for s in sheet_names if s.lower() in ['b2b', 'invoice', 'invoices']), None)
         
-        df_b2b = df_b2b_raw.iloc[h_idx_b2b+1:].dropna(subset=[inv_num_col]) if inv_num_col != -1 else df_b2b_raw.iloc[h_idx_b2b+1:]
-        
-        for _, row in df_b2b.iterrows():
-            if inv_num_col != -1 and pd.isna(row[inv_num_col]): continue
-            
-            party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
-            try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
-            except: taxable_val = 0
-            try: cgst_amt = float(row[cgst_col]) if cgst_col != -1 and pd.notna(row[cgst_col]) else 0
-            except: cgst_amt = 0
-            try: sgst_amt = float(row[sgst_col]) if sgst_col != -1 and pd.notna(row[sgst_col]) else 0
-            except: sgst_amt = 0
-            try: igst_amt = float(row[igst_col]) if igst_col != -1 and pd.notna(row[igst_col]) else 0
-            except: igst_amt = 0
-            
-            inv_num = str(row[inv_num_col]).strip() if inv_num_col != -1 and pd.notna(row[inv_num_col]) else ''
-            inv_date = str(row[inv_date_col]).strip() if inv_date_col != -1 and pd.notna(row[inv_date_col]) else ''
-            
-            sales_ledger = "Sales"
-            narration = f"Being sales made to {party_name}"
-            
-            tds_ledger = ''
-            tds_rate_val = ''
-            tds_note = ''
-            c_party = clean_company_name(party_name)
-            
-            matched_tds_key = None
-            for k in tds_rates:
-                if k in c_party or c_party in k:
-                    matched_tds_key = k
-                    break
-            
-            if matched_tds_key:
-                tds_ledger = 'TDS Receivable'
-                tds_rate_val = tds_rates[matched_tds_key]
-                tds_balances[matched_tds_key] -= taxable_val
-                if tds_balances[matched_tds_key] < 0:
-                    tds_note = 'Not in 26AS yet'
+        if b2b_sheet:
+            df_b2b_raw = pd.read_excel(b2b_path, sheet_name=b2b_sheet, header=None)
+            h_idx_b2b = find_header_row(b2b_path, b2b_sheet, 'Invoice No')
+            if h_idx_b2b == 0:
+                h_idx_b2b = find_header_row(b2b_path, b2b_sheet, 'Recipients Name')
 
-            final_rows.append({
-                'Date': format_date(inv_date),
-                'Voucher Type': 'Sales',
-                'Voucher Number': inv_num,
-                'Party Ledger': party_name,
-                'Sales Ledger': sales_ledger,
-                'Sales Item Name': '',
-                'Sales Item Qty': '',
-                'Sales Item UOM': '',
-                'Sales Item Rate': '',
-                'Taxable Value': taxable_val,
-                'CGST Ledger': 'Output CGST' if cgst_amt > 0 else '',
-                'CGST Rate': get_rounded_rate(cgst_amt, taxable_val),
-                'SGST Ledger': 'Output SGST' if sgst_amt > 0 else '',
-                'SGST Rate': get_rounded_rate(sgst_amt, taxable_val),
-                'IGST Ledger': 'Output IGST' if igst_amt > 0 else '',
-                'IGST Rate': get_rounded_rate(igst_amt, taxable_val),
-                'Narration': narration,
-                'TDS Receivable Ledger': tds_ledger,
-                'TDS %': tds_rate_val,
-                'TDS Note': tds_note
-            })
+            party_col = get_col_index(df_b2b_raw, ['Receiver Name', 'Recipients Name', 'Party Name'])
+            inv_num_col = get_col_index(df_b2b_raw, ['Invoice Number', 'Invoice No'])
+            inv_date_col = get_col_index(df_b2b_raw, ['Invoice Date'])
+            taxable_col = get_col_index(df_b2b_raw, ['Taxable Value', 'Taxable value'])
+            cgst_col = get_col_index(df_b2b_raw, ['Central Tax', 'CGST', 'Central Tax Amount'])
+            sgst_col = get_col_index(df_b2b_raw, ['State/UT Tax', 'SGST', 'State Tax Amount'])
+            igst_col = get_col_index(df_b2b_raw, ['Integrated Tax', 'IGST', 'Integrated Tax Amount'])
+            
+            df_b2b = df_b2b_raw.iloc[h_idx_b2b+1:].dropna(subset=[inv_num_col]) if inv_num_col != -1 else df_b2b_raw.iloc[h_idx_b2b+1:]
+            
+            for _, row in df_b2b.iterrows():
+                if inv_num_col != -1 and pd.isna(row[inv_num_col]): continue
+                
+                party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
+                try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
+                except: taxable_val = 0
+                try: cgst_amt = float(row[cgst_col]) if cgst_col != -1 and pd.notna(row[cgst_col]) else 0
+                except: cgst_amt = 0
+                try: sgst_amt = float(row[sgst_col]) if sgst_col != -1 and pd.notna(row[sgst_col]) else 0
+                except: sgst_amt = 0
+                try: igst_amt = float(row[igst_col]) if igst_col != -1 and pd.notna(row[igst_col]) else 0
+                except: igst_amt = 0
+                
+                inv_num = str(row[inv_num_col]).strip() if inv_num_col != -1 and pd.notna(row[inv_num_col]) else ''
+                inv_date = str(row[inv_date_col]).strip() if inv_date_col != -1 and pd.notna(row[inv_date_col]) else ''
+                
+                sales_ledger = "Sales"
+                narration = f"Being sales made to {party_name}"
+                
+                tds_ledger = ''
+                tds_rate_val = ''
+                tds_note = ''
+                c_party = clean_company_name(party_name)
+                
+                matched_tds_key = None
+                for k in tds_rates:
+                    if k in c_party or c_party in k:
+                        matched_tds_key = k
+                        break
+                
+                if matched_tds_key:
+                    tds_ledger = 'TDS Receivable'
+                    tds_rate_val = tds_rates[matched_tds_key]
+                    tds_balances[matched_tds_key] -= taxable_val
+                    if tds_balances[matched_tds_key] < 0:
+                        tds_note = 'Not in 26AS yet'
+
+                final_rows.append({
+                    'Date': format_date(inv_date),
+                    'Voucher Type': 'Sales',
+                    'Voucher Number': inv_num,
+                    'Party Ledger': party_name,
+                    'Sales Ledger': sales_ledger,
+                    'Sales Item Name': '',
+                    'Sales Item Qty': '',
+                    'Sales Item UOM': '',
+                    'Sales Item Rate': '',
+                    'Taxable Value': taxable_val,
+                    'CGST Ledger': 'Output CGST' if cgst_amt > 0 else '',
+                    'CGST Rate': get_rounded_rate(cgst_amt, taxable_val),
+                    'SGST Ledger': 'Output SGST' if sgst_amt > 0 else '',
+                    'SGST Rate': get_rounded_rate(sgst_amt, taxable_val),
+                    'IGST Ledger': 'Output IGST' if igst_amt > 0 else '',
+                    'IGST Rate': get_rounded_rate(igst_amt, taxable_val),
+                    'Narration': narration,
+                    'TDS Receivable Ledger': tds_ledger,
+                    'TDS %': tds_rate_val,
+                    'TDS Note': tds_note
+                })
     except Exception as e:
         print(f"Error processing B2B: {e}")
 
     # --- 1.5 Process B2B Notes (Credit Notes) ---
     try:
-        df_note_raw = pd.read_excel(b2b_path, sheet_name='note', header=None)
-        h_idx_note = find_header_row(b2b_path, 'note', 'Note No')
-        if h_idx_note == 0:
-            h_idx_note = find_header_row(b2b_path, 'note', 'Recipients Name')
-
-        party_col = get_col_index(df_note_raw, ['Receiver Name', 'Recipients Name', 'Party Name'])
-        note_num_col = get_col_index(df_note_raw, ['Note Number', 'Note No', 'Credit Note No'])
-        note_date_col = get_col_index(df_note_raw, ['Note Date', 'Credit Note Date'])
-        taxable_col = get_col_index(df_note_raw, ['Taxable Value', 'Taxable value'])
-        cgst_col = get_col_index(df_note_raw, ['Central Tax', 'CGST', 'Central Tax Amount'])
-        sgst_col = get_col_index(df_note_raw, ['State/UT Tax', 'SGST', 'State Tax Amount'])
-        igst_col = get_col_index(df_note_raw, ['Integrated Tax', 'IGST', 'Integrated Tax Amount'])
+        xl = pd.ExcelFile(b2b_path)
+        sheet_names = xl.sheet_names
+        note_sheet = next((s for s in sheet_names if s.lower() in ['cdnr', 'note', 'credit note']), None)
         
-        df_note = df_note_raw.iloc[h_idx_note+1:].dropna(subset=[note_num_col]) if note_num_col != -1 else df_note_raw.iloc[h_idx_note+1:]
-        
-        for _, row in df_note.iterrows():
-            if note_num_col != -1 and pd.isna(row[note_num_col]): continue
-            
-            party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
-            try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
-            except: taxable_val = 0
-            try: cgst_amt = float(row[cgst_col]) if cgst_col != -1 and pd.notna(row[cgst_col]) else 0
-            except: cgst_amt = 0
-            try: sgst_amt = float(row[sgst_col]) if sgst_col != -1 and pd.notna(row[sgst_col]) else 0
-            except: sgst_amt = 0
-            try: igst_amt = float(row[igst_col]) if igst_col != -1 and pd.notna(row[igst_col]) else 0
-            except: igst_amt = 0
-            
-            note_num = str(row[note_num_col]).strip() if note_num_col != -1 and pd.notna(row[note_num_col]) else ''
-            note_date = str(row[note_date_col]).strip() if note_date_col != -1 and pd.notna(row[note_date_col]) else ''
-            
-            sales_ledger = "Sales"
+        if note_sheet:
+            df_note_raw = pd.read_excel(b2b_path, sheet_name=note_sheet, header=None)
+            h_idx_note = find_header_row(b2b_path, note_sheet, 'Note No')
+            if h_idx_note == 0:
+                h_idx_note = find_header_row(b2b_path, note_sheet, 'Recipients Name')
 
-            final_rows.append({
-                'Date': format_date(note_date),
-                'Voucher Type': 'Credit Note',
-                'Voucher Number': note_num,
-                'Party Ledger': party_name,
-                'Sales Ledger': sales_ledger,
-                'Sales Item Name': '',
-                'Sales Item Qty': '',
-                'Sales Item UOM': '',
-                'Sales Item Rate': '',
-                'Taxable Value': taxable_val,
-                'CGST Ledger': 'Output CGST' if cgst_amt > 0 else '',
-                'CGST Rate': get_rounded_rate(cgst_amt, taxable_val),
-                'SGST Ledger': 'Output SGST' if sgst_amt > 0 else '',
-                'SGST Rate': get_rounded_rate(sgst_amt, taxable_val),
-                'IGST Ledger': 'Output IGST' if igst_amt > 0 else '',
-                'IGST Rate': get_rounded_rate(igst_amt, taxable_val),
-                'Narration': f"Being sales return / credit note for {party_name}",
-                'TDS Receivable Ledger': '',
-                'TDS %': '',
-                'TDS Note': ''
-            })
+            party_col = get_col_index(df_note_raw, ['Receiver Name', 'Recipients Name', 'Party Name'])
+            note_num_col = get_col_index(df_note_raw, ['Note Number', 'Note No', 'Credit Note No'])
+            note_date_col = get_col_index(df_note_raw, ['Note Date', 'Credit Note Date'])
+            taxable_col = get_col_index(df_note_raw, ['Taxable Value', 'Taxable value'])
+            cgst_col = get_col_index(df_note_raw, ['Central Tax', 'CGST', 'Central Tax Amount'])
+            sgst_col = get_col_index(df_note_raw, ['State/UT Tax', 'SGST', 'State Tax Amount'])
+            igst_col = get_col_index(df_note_raw, ['Integrated Tax', 'IGST', 'Integrated Tax Amount'])
+            
+            df_note = df_note_raw.iloc[h_idx_note+1:].dropna(subset=[note_num_col]) if note_num_col != -1 else df_note_raw.iloc[h_idx_note+1:]
+            
+            for _, row in df_note.iterrows():
+                if note_num_col != -1 and pd.isna(row[note_num_col]): continue
+                
+                party_name = str(row[party_col]).strip() if party_col != -1 and pd.notna(row[party_col]) else ''
+                try: taxable_val = float(row[taxable_col]) if taxable_col != -1 and pd.notna(row[taxable_col]) else 0
+                except: taxable_val = 0
+                try: cgst_amt = float(row[cgst_col]) if cgst_col != -1 and pd.notna(row[cgst_col]) else 0
+                except: cgst_amt = 0
+                try: sgst_amt = float(row[sgst_col]) if sgst_col != -1 and pd.notna(row[sgst_col]) else 0
+                except: sgst_amt = 0
+                try: igst_amt = float(row[igst_col]) if igst_col != -1 and pd.notna(row[igst_col]) else 0
+                except: igst_amt = 0
+                
+                note_num = str(row[note_num_col]).strip() if note_num_col != -1 and pd.notna(row[note_num_col]) else ''
+                note_date = str(row[note_date_col]).strip() if note_date_col != -1 and pd.notna(row[note_date_col]) else ''
+                
+                sales_ledger = "Sales"
+
+                final_rows.append({
+                    'Date': format_date(note_date),
+                    'Voucher Type': 'Credit Note',
+                    'Voucher Number': note_num,
+                    'Party Ledger': party_name,
+                    'Sales Ledger': sales_ledger,
+                    'Sales Item Name': '',
+                    'Sales Item Qty': '',
+                    'Sales Item UOM': '',
+                    'Sales Item Rate': '',
+                    'Taxable Value': taxable_val,
+                    'CGST Ledger': 'Output CGST' if cgst_amt > 0 else '',
+                    'CGST Rate': get_rounded_rate(cgst_amt, taxable_val),
+                    'SGST Ledger': 'Output SGST' if sgst_amt > 0 else '',
+                    'SGST Rate': get_rounded_rate(sgst_amt, taxable_val),
+                    'IGST Ledger': 'Output IGST' if igst_amt > 0 else '',
+                    'IGST Rate': get_rounded_rate(igst_amt, taxable_val),
+                    'Narration': f"Being sales return / credit note for {party_name}",
+                    'TDS Receivable Ledger': '',
+                    'TDS %': '',
+                    'TDS Note': ''
+                })
     except Exception as e:
         print(f"Error processing B2B notes (Credit Notes): {e}")
 
