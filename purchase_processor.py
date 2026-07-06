@@ -113,7 +113,7 @@ def process_purchase_data(gstr2b_path, moa_text=None):
     try:
         xl = pd.ExcelFile(gstr2b_path)
         sheet_names = xl.sheet_names
-        b2b_sheet = next((s for s in sheet_names if any(x in s.lower() for x in ['b2b', 'invoice', 'invoices'])), None)
+        b2b_sheet = next((s for s in sheet_names if any(x in s.lower() for x in ['b2b', 'invoice', 'invoices', 'sheet1', 'sheet 1'])), sheet_names[0] if len(sheet_names) == 1 else None)
         
         if b2b_sheet:
             df_b2b_raw = pd.read_excel(gstr2b_path, sheet_name=b2b_sheet, header=None)
