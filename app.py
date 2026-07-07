@@ -123,62 +123,125 @@ with tab2:
 
 with tab3:
     st.header("Upload Bank Statements")
-    st.markdown("### Pre-processed Data (Optional)")
-    st.markdown("If you already processed Sales and Purchases in a previous session, upload their Excel files here to save AI credits. Otherwise, it will use the data from Tab 1 & 2.")
     
     col1, col2 = st.columns(2)
     with col1:
-        processed_sales_file = st.file_uploader("Upload Processed Sales", type=["xlsx"], key="psales")
+        st.markdown("### Sales Data")
+        if 'sales_out' in st.session_state and os.path.exists(st.session_state['sales_out']):
+            st.success("✅ Sales Data already processed/uploaded.")
+            raw_gstr1_file = None
+            processed_sales_file = None
+        else:
+            raw_gstr1_file = st.file_uploader("Upload Raw GSTR-1 (Excel)", type=["xlsx", "xls"], key="rgstr1")
+            st.markdown("*OR*")
+            processed_sales_file = st.file_uploader("Upload Processed Sales", type=["xlsx"], key="psales")
+            
     with col2:
-        processed_purch_file = st.file_uploader("Upload Processed Purchases", type=["xlsx"], key="ppurch")
+        st.markdown("### Purchase Data")
+        if 'purch_out' in st.session_state and os.path.exists(st.session_state['purch_out']):
+            st.success("✅ Purchase Data already processed/uploaded.")
+            raw_gstr2b_file = None
+            processed_purch_file = None
+        else:
+            raw_gstr2b_file = st.file_uploader("Upload Raw GSTR-2B (Excel)", type=["xlsx", "xls"], key="rgstr2b")
+            st.markdown("*OR*")
+            processed_purch_file = st.file_uploader("Upload Processed Purchases", type=["xlsx"], key="ppurch")
 
-    st.markdown("### Bank Statement")
+    st.markdown("### Bank Statement (Mandatory)")
     bank_file = st.file_uploader("Upload Bank Statement (Excel/CSV)", type=["csv", "xlsx", "xls"], key="bank")
     
     if st.button("Run Bank Reconciliation Engine"):
         if bank_file is not None:
-            sales_path = None
-            purch_path = None
+            sales_path = st.session_state.get('sales_out')
+            purch_path = st.session_state.get('purch_out')
             
+            # Process newly uploaded sales files
             if processed_sales_file:
                 sales_path = "temp_workspace/uploaded_sales_out.xlsx"
                 with open(sales_path, "wb") as f:
                     f.write(processed_sales_file.getvalue())
                 st.session_state['sales_out'] = sales_path
-            elif 'sales_out' in st.session_state:
-                sales_path = st.session_state['sales_out']
-                
+            elif raw_gstr1_file:
+                from sales_processor import process_sales_data
+                r_sales_path = "temp_workspace/raw_gstr1.xlsx"
+                with open(r_sales_path, "wb") as f:
+                    f.write(raw_gstr1_file.getvalue())
+                try:
+                    df_s, df_l = process_sales_data(r_sales_path, None, None)
+                    sales_path = "temp_workspace/sales_output_from_raw.xlsx"
+                    with pd.ExcelWriter(sales_path) as writer:
+                        df_s.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
+                        df_l.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
+                    st.session_state['sales_out'] = sales_path
+                    st.success("Successfully processed raw GSTR-1 in background.")
+                except Exception as e:
+                    st.error(f"Error processing raw GSTR-1: {e}")
+                    
+            # Process newly uploaded purchase files
             if processed_purch_file:
                 purch_path = "temp_workspace/uploaded_purch_out.xlsx"
                 with open(purch_path, "wb") as f:
                     f.write(processed_purch_file.getvalue())
                 st.session_state['purch_out'] = purch_path
-            elif 'purch_out' in st.session_state:
-                purch_path = st.session_state['purch_out']
-                
-            if not sales_path or not purch_path:
-                st.warning("Please either upload the Processed Sales/Purchases files above OR process them in Tab 1 & 2 first!")
-            else:
-                st.info("Reconciling Sales, Purchases, and processing unknown narrations with AI...")
-                from bank_processor import process_bank_statement
-                
-                bank_ext = bank_file.name.split('.')[-1]
-                bank_path = f"temp_workspace/bank_upload.{bank_ext}"
-                with open(bank_path, "wb") as f:
-                    f.write(bank_file.getvalue())
-                
+            elif raw_gstr2b_file:
+                from purchase_processor import process_purchase_data
+                r_purch_path = "temp_workspace/raw_gstr2b.xlsx"
+                with open(r_purch_path, "wb") as f:
+                    f.write(raw_gstr2b_file.getvalue())
                 try:
-                    bank_df = process_bank_statement(bank_path, sales_path, purch_path)
-                    bank_out = "temp_workspace/bank_output.xlsx"
-                    bank_df.to_excel(bank_out, sheet_name="Bank", index=False)
-                    st.session_state['bank_out'] = bank_out
-                    st.success("✅ Bank Reconciliation Engine completed successfully!")
+                    df_p, df_l = process_purchase_data(r_purch_path, "General Trading")
+                    purch_path = "temp_workspace/purch_output_from_raw.xlsx"
+                    with pd.ExcelWriter(purch_path) as writer:
+                        df_p.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
+                        df_l.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
+                    st.session_state['purch_out'] = purch_path
+                    st.success("Successfully processed raw GSTR-2B in background.")
                 except Exception as e:
-                    st.error(f"Error processing bank data: {e}")
+                    st.error(f"Error processing raw GSTR-2B: {e}")
+            
+            st.session_state['run_bank'] = True
+            st.session_state['bank_file_content'] = bank_file.getvalue()
+            st.session_state['bank_ext'] = bank_file.name.split('.')[-1]
+            st.rerun()
+            
         else:
             st.warning("Please upload the Bank Statement.")
 
-    if 'bank_out' in st.session_state and os.path.exists(st.session_state['bank_out']):
+    if st.session_state.get('run_bank'):
+        stop = st.button("Stop & Pause Bank Analysis")
+        if stop:
+            st.session_state['run_bank'] = False
+            st.rerun()
+            
+        bank_path = f"temp_workspace/bank_upload.{st.session_state['bank_ext']}"
+        with open(bank_path, "wb") as f:
+            f.write(st.session_state['bank_file_content'])
+            
+        st.info("Reconciling Sales, Purchases, and processing unknown narrations with AI...")
+        
+        from bank_processor import process_bank_statement_generator, apply_excel_formatting
+        
+        status_text = st.empty()
+        df_placeholder = st.empty()
+        
+        try:
+            for partial_df, status in process_bank_statement_generator(bank_path, st.session_state.get('sales_out'), st.session_state.get('purch_out')):
+                status_text.text(status)
+                df_placeholder.dataframe(partial_df)
+                
+                bank_out = "temp_workspace/bank_output.xlsx"
+                partial_df.to_excel(bank_out, sheet_name="Bank", index=False)
+                apply_excel_formatting(bank_out)
+                st.session_state['bank_out'] = bank_out
+                
+            st.session_state['run_bank'] = False
+            st.success("✅ Bank Reconciliation Engine completed successfully!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error processing bank data: {e}")
+            st.session_state['run_bank'] = False
+
+    if 'bank_out' in st.session_state and os.path.exists(st.session_state['bank_out']) and not st.session_state.get('run_bank'):
         st.markdown("---")
         with open(st.session_state['bank_out'], "rb") as file:
             st.download_button("⬇️ Download Analysed Bank Excel", data=file, file_name="Analysed_Bank.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

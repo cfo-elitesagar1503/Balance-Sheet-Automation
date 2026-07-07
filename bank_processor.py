@@ -92,7 +92,7 @@ def load_gst_masters(sales_path, purchase_path):
     debtors_invoices = []
     creditors_invoices = []
     
-    if os.path.exists(sales_path):
+    if sales_path and os.path.exists(sales_path):
         try:
             df_sales = pd.read_excel(sales_path, sheet_name='RAW_DATA_MASTER')
             for _, row in df_sales.iterrows():
@@ -119,7 +119,7 @@ def load_gst_masters(sales_path, purchase_path):
         except Exception as e:
             print(f"Error loading sales: {e}")
             
-    if os.path.exists(purchase_path):
+    if purchase_path and os.path.exists(purchase_path):
         try:
             df_purch = pd.read_excel(purchase_path, sheet_name='RAW_DATA_MASTER')
             for _, row in df_purch.iterrows():
@@ -305,8 +305,19 @@ def find_gateway_matching_invoice(amt, bank_date, invoices, fixed_pct):
     matches[0]['matched'] = True
     return matches[0]['party'], fixed_pct
 
+def _get_current_df(df_bank, row_info, date_col):
+    df_temp = df_bank.copy()
+    df_temp['Party Name'] = [info.get('party', '') for info in row_info]
+    df_temp['Nature of Expense/Income'] = [info.get('nature', '') for info in row_info]
+    df_temp['Remarks'] = [info.get('remark', '') for info in row_info]
+    df_temp['Confidence'] = [info.get('confidence', '') for info in row_info]
+    df_temp['Cr/Dr'] = [info.get('type', '') for info in row_info]
+    df_temp[date_col] = df_temp[date_col].apply(format_date)
+    cols_to_drop = ['Parsed_Date', 'Parsed_Desc', 'Parsed_Amt', 'Parsed_Type']
+    df_temp = df_temp.drop(columns=[c for c in cols_to_drop if c in df_temp.columns])
+    return df_temp
 
-def process_bank_statement(bank_path, sales_path, purchase_path, output_path=r"C:\Users\Admin\.gemini\antigravity\scratch\tally_automation\Output\processed_bank_v2.xlsx"):
+def process_bank_statement_generator(bank_path, sales_path, purchase_path, output_path=r"C:\Users\Admin\.gemini\antigravity\scratch\tally_automation\Output\processed_bank_v2.xlsx"):
     df_bank = pd.read_excel(bank_path)
     df_bank.columns = [str(c).strip() for c in df_bank.columns]
     
@@ -669,70 +680,67 @@ def process_bank_statement(bank_path, sales_path, purchase_path, output_path=r"C
         
         if not matched:
             still_unmatched_indices.append(idx)
-            
+    yield _get_current_df(df_bank, row_info, date_col), "Mathematical matching complete. Starting AI..."
+    
     # Pass 3: AI Fallback for remaining unmatched
     unique_txns = []
     for idx in still_unmatched_indices:
         info = row_info[idx]
         desc = df_bank.loc[idx, 'Parsed_Desc']
         unique_txns.append({
+            'idx': idx,
             'original': desc,
             'clean': info['clean_desc'],
             'amount': info['amt'],
             'type': info['type']
         })
         
-    ai_mappings = classify_with_ai(unique_txns, debtors_invoices, creditors_invoices)
-    
-    for idx in still_unmatched_indices:
-        desc = df_bank.loc[idx, 'Parsed_Desc']
-        mapping = ai_mappings.get(desc, {})
-        party = mapping.get('Party Name', '')
-        nature = mapping.get('Nature of Expense/Income', '')
-        remark = "Matched by AI (Narration)"
-        confidence = "Medium"
+    chunk_size = 15
+    for i in range(0, len(unique_txns), chunk_size):
+        chunk = unique_txns[i:i+chunk_size]
+        ai_chunk = [{'original': t['original'], 'clean': t['clean'], 'amount': t['amount'], 'type': t['type']} for t in chunk]
+        ai_mappings = classify_with_ai(ai_chunk, debtors_invoices, creditors_invoices)
         
-        # Check if AI suggested a CA firm name (fuzzy match)
-        is_ca_firm_ai = False
-        if party:
-            party_upper = party.upper()
-            for ca_key, ca_full_name in CA_FIRMS.items():
-                if ca_key in party_upper:
-                    party = ca_full_name
-                    nature = "Legal & Professional Fees"
-                    remark = "Matched by AI (Overridden to CA Firm)"
-                    confidence = "High-Cyan" # Treat as high confidence
-                    is_ca_firm_ai = True
-                    break
-                    
-        # Upgrade Exotel/Clear narration matches!
-        if not is_ca_firm_ai:
-            if party:
-                desc_upper = desc.upper()
-                if check_name_match(party, desc_upper):
-                    remark = "Matched by AI (Exact Name in Narration)"
-                    confidence = "High-Cyan" # Text Only
-            elif not nature:
-                remark = "Low Confidence AI Fallback"
-                confidence = "Low" # Red
+        for t in chunk:
+            idx = t['idx']
+            desc = t['original']
+            mapping = ai_mappings.get(desc, {})
+            party = mapping.get('Party Name', '')
+            nature = mapping.get('Nature of Expense/Income', '')
+            remark = "Matched by AI (Narration)"
+            confidence = "Medium"
             
-        row_info[idx]['party'] = party
-        row_info[idx]['nature'] = nature
-        row_info[idx]['remark'] = remark
-        row_info[idx]['confidence'] = confidence
+            is_ca_firm_ai = False
+            if party:
+                party_upper = party.upper()
+                for ca_key, ca_full_name in CA_FIRMS.items():
+                    if ca_key in party_upper:
+                        party = ca_full_name
+                        nature = "Legal & Professional Fees"
+                        remark = "Matched by AI (Overridden to CA Firm)"
+                        confidence = "High-Cyan"
+                        is_ca_firm_ai = True
+                        break
+                        
+            if not is_ca_firm_ai:
+                if party:
+                    desc_upper = desc.upper()
+                    if check_name_match(party, desc_upper):
+                        remark = "Matched by AI (Exact Name in Narration)"
+                        confidence = "High-Cyan"
+                elif not nature:
+                    remark = "Low Confidence AI Fallback"
+                    confidence = "Low"
+                
+            row_info[idx]['party'] = party
+            row_info[idx]['nature'] = nature
+            row_info[idx]['remark'] = remark
+            row_info[idx]['confidence'] = confidence
+            
+        yield _get_current_df(df_bank, row_info, date_col), f"AI Processing: {min(i+chunk_size, len(unique_txns))} / {len(unique_txns)} transactions"
         
-    # Write back to dataframe
-    df_bank['Party Name'] = [info['party'] for info in row_info]
-    df_bank['Nature of Expense/Income'] = [info['nature'] for info in row_info]
-    df_bank['Remarks'] = [info['remark'] for info in row_info]
-    df_bank['Confidence'] = [info['confidence'] for info in row_info]
-    df_bank['Cr/Dr'] = [info['type'] for info in row_info]
-    df_bank[date_col] = df_bank[date_col].apply(format_date)
-    
-    cols_to_drop = ['Parsed_Date', 'Parsed_Desc', 'Parsed_Amt', 'Parsed_Type']
-    df_bank = df_bank.drop(columns=[c for c in cols_to_drop if c in df_bank.columns])
-    
-    return df_bank
+    # Final yield
+    yield _get_current_df(df_bank, row_info, date_col), "Complete"
 
 def apply_excel_formatting(output_path):
     wb = openpyxl.load_workbook(output_path)
