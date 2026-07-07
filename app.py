@@ -129,23 +129,17 @@ with tab3:
         st.markdown("### Sales Data")
         if 'sales_out' in st.session_state and os.path.exists(st.session_state['sales_out']):
             st.success("✅ Sales Data already processed/uploaded.")
-            raw_gstr1_file = None
-            processed_sales_file = None
+            sales_upload_file = None
         else:
-            raw_gstr1_file = st.file_uploader("Upload Raw GSTR-1 (Excel)", type=["xlsx", "xls"], key="rgstr1")
-            st.markdown("*OR*")
-            processed_sales_file = st.file_uploader("Upload Processed Sales", type=["xlsx"], key="psales")
+            sales_upload_file = st.file_uploader("Upload GSTR-1 OR Processed Sales (Excel)", type=["xlsx", "xls"], key="sales_up")
             
     with col2:
         st.markdown("### Purchase Data")
         if 'purch_out' in st.session_state and os.path.exists(st.session_state['purch_out']):
             st.success("✅ Purchase Data already processed/uploaded.")
-            raw_gstr2b_file = None
-            processed_purch_file = None
+            purch_upload_file = None
         else:
-            raw_gstr2b_file = st.file_uploader("Upload Raw GSTR-2B (Excel)", type=["xlsx", "xls"], key="rgstr2b")
-            st.markdown("*OR*")
-            processed_purch_file = st.file_uploader("Upload Processed Purchases", type=["xlsx"], key="ppurch")
+            purch_upload_file = st.file_uploader("Upload GSTR-2B OR Processed Purchases (Excel)", type=["xlsx", "xls"], key="purch_up")
 
     st.markdown("### Bank Statement (Mandatory)")
     bank_file = st.file_uploader("Upload Bank Statement (Excel/CSV)", type=["csv", "xlsx", "xls"], key="bank")
@@ -156,48 +150,56 @@ with tab3:
             purch_path = st.session_state.get('purch_out')
             
             # Process newly uploaded sales files
-            if processed_sales_file:
-                sales_path = "temp_workspace/uploaded_sales_out.xlsx"
-                with open(sales_path, "wb") as f:
-                    f.write(processed_sales_file.getvalue())
-                st.session_state['sales_out'] = sales_path
-            elif raw_gstr1_file:
-                from sales_processor import process_sales_data
-                r_sales_path = "temp_workspace/raw_gstr1.xlsx"
-                with open(r_sales_path, "wb") as f:
-                    f.write(raw_gstr1_file.getvalue())
-                try:
-                    df_s, df_l = process_sales_data(r_sales_path, None, None)
-                    sales_path = "temp_workspace/sales_output_from_raw.xlsx"
-                    with pd.ExcelWriter(sales_path) as writer:
-                        df_s.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
-                        df_l.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
+            if sales_upload_file:
+                xl_sales = pd.ExcelFile(sales_upload_file)
+                if 'RAW_DATA_MASTER' in xl_sales.sheet_names:
+                    # It's a processed file
+                    sales_path = "temp_workspace/uploaded_sales_out.xlsx"
+                    with open(sales_path, "wb") as f:
+                        f.write(sales_upload_file.getvalue())
                     st.session_state['sales_out'] = sales_path
-                    st.success("Successfully processed raw GSTR-1 in background.")
-                except Exception as e:
-                    st.error(f"Error processing raw GSTR-1: {e}")
+                else:
+                    # It's a Raw GSTR-1 file
+                    from sales_processor import process_sales_data
+                    r_sales_path = "temp_workspace/raw_gstr1.xlsx"
+                    with open(r_sales_path, "wb") as f:
+                        f.write(sales_upload_file.getvalue())
+                    try:
+                        df_s, df_l = process_sales_data(r_sales_path, None, None)
+                        sales_path = "temp_workspace/sales_output_from_raw.xlsx"
+                        with pd.ExcelWriter(sales_path) as writer:
+                            df_s.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
+                            df_l.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
+                        st.session_state['sales_out'] = sales_path
+                        st.success("Successfully processed raw GSTR-1 in background.")
+                    except Exception as e:
+                        st.error(f"Error processing raw GSTR-1: {e}")
                     
             # Process newly uploaded purchase files
-            if processed_purch_file:
-                purch_path = "temp_workspace/uploaded_purch_out.xlsx"
-                with open(purch_path, "wb") as f:
-                    f.write(processed_purch_file.getvalue())
-                st.session_state['purch_out'] = purch_path
-            elif raw_gstr2b_file:
-                from purchase_processor import process_purchase_data
-                r_purch_path = "temp_workspace/raw_gstr2b.xlsx"
-                with open(r_purch_path, "wb") as f:
-                    f.write(raw_gstr2b_file.getvalue())
-                try:
-                    df_p, df_l = process_purchase_data(r_purch_path, "General Trading")
-                    purch_path = "temp_workspace/purch_output_from_raw.xlsx"
-                    with pd.ExcelWriter(purch_path) as writer:
-                        df_p.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
-                        df_l.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
+            if purch_upload_file:
+                xl_purch = pd.ExcelFile(purch_upload_file)
+                if 'RAW_DATA_MASTER' in xl_purch.sheet_names:
+                    # It's a processed file
+                    purch_path = "temp_workspace/uploaded_purch_out.xlsx"
+                    with open(purch_path, "wb") as f:
+                        f.write(purch_upload_file.getvalue())
                     st.session_state['purch_out'] = purch_path
-                    st.success("Successfully processed raw GSTR-2B in background.")
-                except Exception as e:
-                    st.error(f"Error processing raw GSTR-2B: {e}")
+                else:
+                    # It's a Raw GSTR-2B file
+                    from purchase_processor import process_purchase_data
+                    r_purch_path = "temp_workspace/raw_gstr2b.xlsx"
+                    with open(r_purch_path, "wb") as f:
+                        f.write(purch_upload_file.getvalue())
+                    try:
+                        df_p, df_l = process_purchase_data(r_purch_path, "General Trading")
+                        purch_path = "temp_workspace/purch_output_from_raw.xlsx"
+                        with pd.ExcelWriter(purch_path) as writer:
+                            df_p.to_excel(writer, sheet_name="RAW_DATA_MASTER", index=False)
+                            df_l.to_excel(writer, sheet_name="LEDGER_GROUP_MAP", index=False)
+                        st.session_state['purch_out'] = purch_path
+                        st.success("Successfully processed raw GSTR-2B in background.")
+                    except Exception as e:
+                        st.error(f"Error processing raw GSTR-2B: {e}")
             
             st.session_state['run_bank'] = True
             st.session_state['bank_file_content'] = bank_file.getvalue()
